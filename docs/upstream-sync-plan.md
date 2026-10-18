@@ -46,7 +46,8 @@ git log v0.6.28..robin/main --oneline -- Sources/OpenUsage/Providers/<Name> docs
 - **Claude**: `CLAUDE_CODE_OAUTH_TOKEN` 환경변수가 설정돼 있으면 Session/Weekly가 비어 버린다.
 - **Antigravity**: Cloud Code URL 순서가 거꾸로다. daily 엔드포인트에는 Gemini 쿼터가 없으므로 `cloudcode-pa`를 먼저 호출해야 한다.
 
-### 1. OpenRouter (S)
+### 1. OpenRouter (S) — 완료
+`plugins/openrouter/`로 추가했다. 기본값은 꺼짐이고, 설정 방법은 `docs/providers/openrouter.md`에 있다.
 - 키를 다음 순서로 찾는다: `~/.config/openusage/openrouter.json`(`apiKey`/`api_key`/`key` 또는 키만 든 텍스트) → `~/.config/openrouter/key.json` → 환경변수 `OPENROUTER_API_KEY` → `OPENROUTER_KEY`. Windows에서 `~`는 `%USERPROFILE%`이다.
 - `GET https://openrouter.ai/api/v1/credits`는 필수이고, `GET /key`는 실패해도 넘어간다. 둘 다 Bearer 인증이다.
 - 지표는 Credits, Balance, Today/This Week/This Month이고, 키에 한도가 걸려 있으면 Key Limit을 추가한다. $0은 "No data"가 아니라 0으로 표시한다.
