@@ -868,48 +868,39 @@
       const headerPrimary = readPercent(resp.headers["x-codex-primary-used-percent"])
       const headerSecondary = readPercent(resp.headers["x-codex-secondary-used-percent"])
 
-      if (headerPrimary !== null) {
-        lines.push(ctx.line.progress({
-          label: "Session",
-          used: headerPrimary,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-          periodDurationMs: PERIOD_SESSION_MS
-        }))
+      // Codex can move a lone weekly window into primary_window, so classify each window by
+      // limit_window_seconds and fall back to its slot only when the duration is absent or unfamiliar.
+      const candidates = []
+      const addCandidate = (win, headerPercent, slotKind) => {
+        const used = headerPercent !== null
+          ? headerPercent
+          : (win && typeof win.used_percent === "number" ? win.used_percent : null)
+        if (used === null) return
+        const secs = win ? win.limit_window_seconds : undefined
+        const exactKind = secs === PERIOD_SESSION_MS / 1000 ? "session"
+          : secs === PERIOD_WEEKLY_MS / 1000 ? "weekly"
+          : null
+        candidates.push({ win, used, exactKind, slotKind })
       }
-      if (headerSecondary !== null) {
-        lines.push(ctx.line.progress({
-          label: "Weekly",
-          used: headerSecondary,
-          limit: 100,
-          format: { kind: "percent" },
-          resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-          periodDurationMs: PERIOD_WEEKLY_MS
-        }))
-      }
+      addCandidate(primaryWindow, headerPrimary, "session")
+      addCandidate(secondaryWindow, headerSecondary, "weekly")
 
-      if (lines.length === 0 && data.rate_limit) {
-        if (data.rate_limit.primary_window && typeof data.rate_limit.primary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Session",
-            used: data.rate_limit.primary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, primaryWindow),
-            periodDurationMs: PERIOD_SESSION_MS
-          }))
-        }
-        if (data.rate_limit.secondary_window && typeof data.rate_limit.secondary_window.used_percent === "number") {
-          lines.push(ctx.line.progress({
-            label: "Weekly",
-            used: data.rate_limit.secondary_window.used_percent,
-            limit: 100,
-            format: { kind: "percent" },
-            resetsAt: getResetsAtIso(ctx, nowSec, secondaryWindow),
-            periodDurationMs: PERIOD_WEEKLY_MS
-          }))
-        }
+      const windowKinds = [
+        { kind: "session", label: "Session", periodMs: PERIOD_SESSION_MS },
+        { kind: "weekly", label: "Weekly", periodMs: PERIOD_WEEKLY_MS },
+      ]
+      for (const k of windowKinds) {
+        const c = candidates.find((x) => x.exactKind === k.kind)
+          || candidates.find((x) => x.exactKind === null && x.slotKind === k.kind)
+        if (!c) continue
+        lines.push(ctx.line.progress({
+          label: k.label,
+          used: c.used,
+          limit: 100,
+          format: { kind: "percent" },
+          resetsAt: getResetsAtIso(ctx, nowSec, c.win),
+          periodDurationMs: k.periodMs
+        }))
       }
 
       if (Array.isArray(data.additional_rate_limits)) {

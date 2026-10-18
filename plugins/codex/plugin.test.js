@@ -270,6 +270,55 @@ describe("codex plugin", () => {
     expect(credits.value).toBe("$4.00 · 100 credits")
   })
 
+  it("labels a lone weekly window in the primary slot as Weekly, not Session", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: { "x-codex-primary-used-percent": "37" },
+      bodyText: JSON.stringify({
+        plan_type: "plus",
+        rate_limit: {
+          primary_window: { used_percent: 37, limit_window_seconds: 604800, reset_after_seconds: 3600 },
+          secondary_window: null,
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session")).toBeUndefined()
+    const weekly = result.lines.find((line) => line.label === "Weekly")
+    expect(weekly.used).toBe(37)
+    expect(weekly.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+  })
+
+  it("classifies swapped windows by duration", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
+      tokens: { access_token: "token" },
+      last_refresh: new Date().toISOString(),
+    }))
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      headers: {},
+      bodyText: JSON.stringify({
+        rate_limit: {
+          primary_window: { used_percent: 80, limit_window_seconds: 604800 },
+          secondary_window: { used_percent: 20, limit_window_seconds: 18000 },
+        },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((line) => line.label === "Session").used).toBe(20)
+    expect(result.lines.find((line) => line.label === "Weekly").used).toBe(80)
+  })
+
   it("uses zero credits from the response body when the account has no credits", async () => {
     const ctx = makeCtx()
     ctx.host.fs.writeText("~/.codex/auth.json", JSON.stringify({
