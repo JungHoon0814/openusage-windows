@@ -424,6 +424,35 @@ describe("claude plugin", () => {
     expect(result.lines.find((line) => line.label === "Last 30 Days")?.value).toContain("150 tokens")
   })
 
+  it("prefers a stored profile-scoped login over CLAUDE_CODE_OAUTH_TOKEN for live usage", async () => {
+    const ctx = makeCtx()
+    ctx.host.fs.exists = () => true
+    ctx.host.fs.readText = () =>
+      JSON.stringify({
+        claudeAiOauth: { accessToken: "stored-token", scopes: ["user:inference", "user:profile"] },
+      })
+    ctx.host.env.get.mockImplementation((name) =>
+      name === "CLAUDE_CODE_OAUTH_TOKEN" ? "env-oauth-token" : null
+    )
+    ctx.host.http.request.mockReturnValue({
+      status: 200,
+      bodyText: JSON.stringify({
+        five_hour: { utilization: 10, resets_at: "2099-01-01T00:00:00.000Z" },
+        seven_day: { utilization: 20, resets_at: "2099-01-01T00:00:00.000Z" },
+      }),
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    const usageCall = ctx.host.http.request.mock.calls.find((call) =>
+      String(call[0]?.url).includes("/api/oauth/usage")
+    )
+    expect(usageCall[0].headers.Authorization).toBe("Bearer stored-token")
+    expect(result.lines.find((line) => line.label === "Session")).toBeTruthy()
+    expect(result.lines.find((line) => line.label === "Weekly")).toBeTruthy()
+  })
+
   it("renders usage lines from response", async () => {
     const ctx = makeCtx()
     ctx.host.fs.readText = () =>

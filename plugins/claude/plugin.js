@@ -330,6 +330,12 @@
     if (!envAccessToken) {
       return stored
     }
+    // CLAUDE_CODE_OAUTH_TOKEN is inference-only (usually a `claude setup-token` token) and 403s on
+    // the usage endpoint. It is often exported ambiently, so it must not shadow a stored login that
+    // can read live usage; it is used only when there is no such login (a headless setup).
+    if (stored && hasProfileScope(stored)) {
+      return stored
+    }
 
     const oauth = stored && stored.oauth ? Object.assign({}, stored.oauth) : {}
     oauth.accessToken = envAccessToken
