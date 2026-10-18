@@ -38,8 +38,8 @@ git log v0.6.28..robin/main --oneline -- Sources/OpenUsage/Providers/<Name> docs
 | 7 | 네이티브 로컬 지출 엔진 + 가격표 | Rust | L |
 | 8 | 멀티 계정·계정 전환·Claude Desktop | JS + Rust | L, 후순위 |
 
-### 0. 지금 깨졌을 가능성이 높은 것 (S, 최우선)
-코드 대조로 찾은 것이고 실제 계정으로는 확인하지 않았다.
+### 0. 지금 깨졌을 가능성이 높은 것 (S, 최우선) — 완료
+코드 대조로 찾은 것이고 실제 계정으로는 확인하지 않았다. 5개 모두 provider별 커밋과 테스트로 반영했다(4c580c1, f179621, 71dcbc5, 0f5761c, 9bdfbd2). Claude는 단순화한 버전이다. 저장된 로그인에 `user:profile` 스코프가 있으면 그것을 쓰고, 업스트림처럼 env 토큰을 후순위 후보로 두지는 않는다.
 - **ZAI**: 현재 응답은 쿼터 타입이 `TOKENS_LIMIT`이 아니라 `CREDIT_LIMIT`이다. 플러그인이 `TOKENS_LIMIT`만 찾기 때문에 "No usage data"가 뜰 것이다.
 - **Grok**: 이제 `/v1/billing?format=credits` 형식으로 응답한다(`config.creditUsagePercent`, `currentPeriod`). 지금 플러그인은 "response changed" 예외를 던질 것이다.
 - **Codex**: 창을 슬롯(primary/secondary)이 아니라 `limit_window_seconds`(18000은 Session, 604800은 Weekly)로 분류해야 한다. 지금은 weekly 창 하나만 primary에 오면 Session으로 잘못 표시한다.
