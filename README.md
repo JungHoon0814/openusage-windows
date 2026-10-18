@@ -54,7 +54,7 @@ OpenUsage lives in your system tray and shows how much of your AI coding subscri
 - [**Kiro**](docs/providers/kiro.md) — credits, bonus credits, overages
 - [**Kimi Code**](docs/providers/kimi.md) — session, weekly
 - [**MiniMax**](docs/providers/minimax.md) — coding‑plan session
-- [**OpenCode Go**](docs/providers/opencode-go.md) — 5h, weekly, monthly spend limits
+- [**OpenCode Go**](docs/providers/opencode-go.md) — 5h, weekly, monthly limits (official usage API)
 - [**OpenRouter**](docs/providers/openrouter.md) — credits, balance, daily / weekly / monthly spend, key limit (API key)
 
 Each provider reads the login that its own app or CLI already saved on your machine — OpenUsage never asks you for a password. Providers are plugins; see the [plugin docs](docs/plugins/) for how they work.

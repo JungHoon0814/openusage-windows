@@ -54,7 +54,8 @@ git log v0.6.28..robin/main --oneline -- Sources/OpenUsage/Providers/<Name> docs
 - 기존 `fs`, `env`, `http` 호스트 API로 충분하다.
 - 참고: `Sources/OpenUsage/Providers/OpenRouter/*`, `docs/providers/openrouter.md`.
 
-### 2. OpenCode Go (S–M)
+### 2. OpenCode Go (S–M) — 완료
+미터를 공식 usage API로 바꾸고, OpenCode 2 credential 테이블(import 마이그레이션 확인)과 데이터 디렉터리 해석, 모든 `opencode*.db` 읽기를 반영했다. 하드코딩된 $12/$30/$60 기준의 로컬 추정치는 업스트림처럼 없앴다.
 - 미터 값은 `GET https://opencode.ai/zen/go/v1/usage`(Bearer)의 `usage.{rolling,weekly,monthly}.{percent,resetsAt}`에서 읽는다.
 - OpenCode 2는 `session_message` 테이블을 쓰고 자격증명도 DB에 있다. `opencode*.db` 파일을 전부 읽는다.
 - 참고: `Providers/OpenCode/OpenCodeAuthStore.swift`, `OpenCodeProvider.swift`.
