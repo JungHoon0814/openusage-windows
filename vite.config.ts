@@ -19,6 +19,8 @@ export default defineConfig(async () => ({
   test: {
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    // The updater is off in normal builds; enable it so its hook stays under test.
+    env: { VITE_ENABLE_UPDATER: "true" },
     include: ["src/**/*.test.{ts,tsx}", "plugins/**/*.test.js"],
     exclude: ["**/node_modules/**", "**/src-tauri/target/**"],
     clearMocks: true,

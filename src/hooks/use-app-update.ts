@@ -12,6 +12,11 @@ export type UpdateStatus =
   | { status: "ready" }
   | { status: "error"; message: string }
 
+// Off by default in this fork: no signed releases are published yet. To turn on, publish
+// signed releases, set your own `plugins.updater.pubkey` in tauri.conf.json, and build
+// with VITE_ENABLE_UPDATER=true.
+const UPDATER_ENABLED = import.meta.env.VITE_ENABLE_UPDATER === "true"
+
 interface UseAppUpdateReturn {
   updateStatus: UpdateStatus
   triggerInstall: () => void
@@ -33,7 +38,7 @@ export function useAppUpdate(): UseAppUpdateReturn {
   }, [])
 
   const checkForUpdates = useCallback(async () => {
-    if (!isTauri()) return
+    if (!UPDATER_ENABLED || !isTauri()) return
     if (inFlightRef.current.checking || inFlightRef.current.downloading || inFlightRef.current.installing) return
     if (statusRef.current.status === "ready") return
 
