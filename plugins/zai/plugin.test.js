@@ -455,6 +455,26 @@ describe("zai plugin", () => {
     expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
   })
 
+  it("reads Session and Weekly from CREDIT_LIMIT entries (current plans)", async () => {
+    const ctx = makeCtx()
+    mockEnvWithKey(ctx, "test-key")
+    const limits = QUOTA_RESPONSE_WITH_WEEKLY.data.limits.map((l) =>
+      l.type === "TOKENS_LIMIT" ? { ...l, type: "CREDIT_LIMIT" } : l
+    )
+    limits[1] = { ...limits[1], percentage: 42 }
+    ctx.host.http.request.mockImplementation((opts) => {
+      if (opts.url.includes("subscription")) {
+        return { status: 200, bodyText: JSON.stringify(SUBSCRIPTION_RESPONSE) }
+      }
+      return { status: 200, bodyText: JSON.stringify({ code: 200, data: { limits } }) }
+    })
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+    expect(result.lines.find((l) => l.label === "Session").used).toBe(10)
+    expect(result.lines.find((l) => l.label === "Weekly").used).toBe(42)
+  })
+
   it("Weekly line has correct percentage, resetsAt, and periodDurationMs values", async () => {
     const ctx = makeCtx()
     mockEnvWithKey(ctx, "test-key")

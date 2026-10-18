@@ -78,11 +78,14 @@
     return data
   }
 
-  function findLimit(limits, type, unit) {
+  // Current plans report the percentage quota as CREDIT_LIMIT; older plans used TOKENS_LIMIT.
+  const QUOTA_TYPES = ["CREDIT_LIMIT", "TOKENS_LIMIT"]
+
+  function findLimit(limits, types, unit) {
     let fallback = null
     for (let i = 0; i < limits.length; i++) {
       const item = limits[i]
-      if (item.type === type || item.name === type) {
+      if (types.indexOf(item.type) !== -1 || types.indexOf(item.name) !== -1) {
         if (unit === undefined) {
           return item
         }
@@ -117,7 +120,7 @@
       return { plan, lines }
     }
 
-    const tokenLimit = findLimit(limits, "TOKENS_LIMIT", 3)
+    const tokenLimit = findLimit(limits, QUOTA_TYPES, 3)
 
     if (!tokenLimit) {
       lines.push(ctx.line.badge({ label: "Session", text: "No usage data", color: "#a3a3a3" }))
@@ -139,7 +142,7 @@
     }
     lines.push(ctx.line.progress(progressOpts))
 
-    const weeklyTokenLimit = findLimit(limits, "TOKENS_LIMIT", 6)
+    const weeklyTokenLimit = findLimit(limits, QUOTA_TYPES, 6)
     if (weeklyTokenLimit) {
       const weeklyUsed = Number.isFinite(weeklyTokenLimit.percentage) ? weeklyTokenLimit.percentage : 0
       const weeklyResetsAt = weeklyTokenLimit.nextResetTime ? ctx.util.toIso(weeklyTokenLimit.nextResetTime) : undefined
@@ -157,7 +160,7 @@
       lines.push(ctx.line.progress(weeklyOpts))
     }
 
-    const timeLimit = findLimit(limits, "TIME_LIMIT")
+    const timeLimit = findLimit(limits, ["TIME_LIMIT"])
 
     if (timeLimit) {
       const webUsed = typeof timeLimit.currentValue === "number" ? timeLimit.currentValue : 0
