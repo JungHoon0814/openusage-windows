@@ -672,8 +672,8 @@ describe("antigravity plugin", () => {
     expect(called.every((call) => call.auth === "Bearer agy-keychain-token")).toBe(true)
     expect(called.every((call) => call.userAgent === "agy")).toBe(true)
     expect(called.map((call) => call.url)).toEqual([
-      "https://daily-cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
-      "https://daily-cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
+      "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist",
+      "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota",
     ])
     expect(result.plan).toBe("Google AI Pro")
     expect(result.lines.map((l) => l.label)).toEqual(["Gemini Pro", "Gemini Flash", "Claude"])
@@ -757,7 +757,7 @@ describe("antigravity plugin", () => {
     expect(() => plugin.probe(ctx)).toThrow(LOGIN_MESSAGE)
   })
 
-  it("Cloud Code tries multiple base URLs", async () => {
+  it("Cloud Code tries production first, then the daily base URL", async () => {
     const ctx = makeCtx()
     const futureExpiry = Math.floor(Date.now() / 1000) + 3600
     setupSqliteMock(ctx, makeOAuthSentinelB64(ctx, { accessToken: "ya29.test-token", refreshToken: "1//refresh", expirySeconds: futureExpiry }))
@@ -768,7 +768,7 @@ describe("antigravity plugin", () => {
       const url = String(opts.url)
       if (url.includes("fetchAvailableModels")) {
         calledUrls.push(url)
-        if (url.includes("daily-cloudcode")) {
+        if (url.startsWith("https://cloudcode-pa.")) {
           throw new Error("network error")
         }
         return { status: 200, bodyText: JSON.stringify(makeCloudCodeResponse()) }
@@ -779,9 +779,10 @@ describe("antigravity plugin", () => {
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(calledUrls.length).toBe(2)
-    expect(calledUrls[0]).toContain("daily-cloudcode-pa.googleapis.com")
-    expect(calledUrls[1]).toContain("cloudcode-pa.googleapis.com")
+    expect(calledUrls).toEqual([
+      "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+      "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    ])
     expect(result.lines.length).toBeGreaterThan(0)
   })
 
