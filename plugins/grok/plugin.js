@@ -1,6 +1,9 @@
 (function () {
   const AUTH_PATH = "~/.grok/auth.json"
-  const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+  // The credits format is what the Grok CLI itself fetches: the shared weekly pool as a percent.
+  const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
+  const WEEKLY_PERIOD_TYPE = "USAGE_PERIOD_TYPE_WEEKLY"
+  const TEAM_BILLING_NOTE = "Team accounts have no personal quota."
   const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
   const REFRESH_URL = "https://auth.x.ai/oauth2/token"
   const DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828"
@@ -177,10 +180,27 @@
     throw "Grok auth invalid. Run `grok login` again."
   }
 
-  function unitsValue(obj) {
-    if (!obj || typeof obj !== "object") return null
-    const n = Number(obj.val)
+  // The response is proto-JSON, so zero values are omitted: absent means 0, but a present value
+  // that isn't numeric is a schema change.
+  function readOptionalNumber(raw) {
+    if (raw === undefined) return 0
+    if (typeof raw === "string" && raw.trim() === "") return null
+    if (typeof raw !== "number" && typeof raw !== "string") return null
+    const n = Number(raw)
     return Number.isFinite(n) ? n : null
+  }
+
+  function readOnDemandCap(raw) {
+    if (raw === undefined) return 0
+    if (!raw || typeof raw !== "object") return null
+    return readOptionalNumber(raw.val)
+  }
+
+  function isTeamBillingUnavailable(ctx, resp) {
+    if (resp.status !== 412) return false
+    const data = ctx.util.tryParseJson(resp.bodyText)
+    return !!data && typeof data.error === "string" &&
+      data.error.toLowerCase().indexOf("no personal team") !== -1
   }
 
   function clampPercent(value) {
@@ -256,39 +276,53 @@
         return refreshed
       },
     })
+    // A team principal gets a 412 here: auth is fine, there is just no personal pool to show.
+    if (isTeamBillingUnavailable(ctx, billingResp)) {
+      ctx.host.log.warn("credits config unavailable: team principal has no personal team")
+      return {
+        plan: fetchPlanName(ctx, auth.token),
+        lines: [
+          ctx.line.badge({ label: "Status", text: "Team account", color: "#f59e0b" }),
+          ctx.line.text({ label: "Note", value: TEAM_BILLING_NOTE }),
+        ],
+      }
+    }
+
     const data = parseBilling(ctx, billingResp)
     const config = data && data.config
-    if (!config || typeof config !== "object") {
+    const period = config && typeof config === "object" ? config.currentPeriod : null
+    if (!period || typeof period !== "object") {
       throw "Grok billing response changed."
     }
 
-    const usedUnits = unitsValue(config.used)
-    const limitUnits = unitsValue(config.monthlyLimit)
-    const onDemandCapUnits = unitsValue(config.onDemandCap)
-    if (usedUnits === null || limitUnits === null || limitUnits <= 0 || onDemandCapUnits === null) {
+    const periodType = typeof period.type === "string" ? period.type.trim() : ""
+    const startIso = ctx.util.toIso(period.start)
+    const endIso = ctx.util.toIso(period.end)
+    const startMs = startIso ? Date.parse(startIso) : NaN
+    const endMs = endIso ? Date.parse(endIso) : NaN
+    const usedPercent = readOptionalNumber(config.creditUsagePercent)
+    const onDemandCap = readOnDemandCap(config.onDemandCap)
+    if (!periodType || !(endMs > startMs) || usedPercent === null || onDemandCap === null) {
       throw "Grok billing response changed."
     }
 
-    const resetsAt = ctx.util.toIso(config.billingPeriodEnd)
-    if (!resetsAt) {
-      throw "Grok billing response changed."
-    }
-
-    const usedPercent = clampPercent((usedUnits / limitUnits) * 100)
-    const lines = [
-      ctx.line.progress({
-        label: "Credits used",
-        used: usedPercent,
+    const lines = []
+    // Only the weekly pool is shown; a monthly percent labelled as weekly would be worse than none.
+    if (periodType === WEEKLY_PERIOD_TYPE) {
+      lines.push(ctx.line.progress({
+        label: "Weekly limit",
+        used: clampPercent(usedPercent),
         limit: 100,
         format: { kind: "percent" },
-        resetsAt,
-      }),
-      ctx.line.badge({
-        label: "Pay as you go",
-        text: onDemandCapUnits > 0 ? String(onDemandCapUnits) + " cap" : "Disabled",
-        color: onDemandCapUnits > 0 ? "#22c55e" : "#a3a3a3",
-      }),
-    ]
+        resetsAt: endIso,
+        periodDurationMs: endMs - startMs,
+      }))
+    }
+    lines.push(ctx.line.badge({
+      label: "Pay as you go",
+      text: onDemandCap > 0 ? String(onDemandCap) + " cap" : "Disabled",
+      color: onDemandCap > 0 ? "#22c55e" : "#a3a3a3",
+    }))
 
     return { plan: fetchPlanName(ctx, auth.token), lines }
   }

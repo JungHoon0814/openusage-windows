@@ -10,9 +10,9 @@ Tracks Grok Build credit usage from the local Grok CLI login.
 - **Base URL:** `https://cli-chat-proxy.grok.com/v1`
 - **Auth:** cached Grok CLI token from `~/.grok/auth.json`
 - **Refresh:** Grok CLI refresh token from the same file
-- **Usage unit:** raw billing units from Grok
+- **Usage unit:** percent of the shared weekly credit pool
 - **Plan source:** `GET /settings` (`subscription_tier_display`)
-- **Reset period:** billing period from the CLI billing response
+- **Reset period:** `currentPeriod` from the credits billing response
 
 ## Setup
 
@@ -28,9 +28,9 @@ OpenUsage reads the same local auth file that the Grok CLI uses. Access tokens a
 
 ## Endpoint
 
-### GET /billing
+### GET /billing?format=credits
 
-Returns the current Grok Build billing period, credit usage, and pay-as-you-go cap.
+Returns the shared weekly credit pool and pay-as-you-go cap. This is the same call the Grok CLI makes.
 
 #### Headers
 
@@ -42,43 +42,43 @@ Returns the current Grok Build billing period, credit usage, and pay-as-you-go c
 
 #### Response
 
+The body is proto-JSON, so zero-valued fields are omitted: a missing `creditUsagePercent` means 0%, and a missing `onDemandCap` means pay-as-you-go is disabled.
+
 ```json
 {
   "config": {
-    "monthlyLimit": { "val": 60000 },
-    "used": { "val": 4277 },
-    "onDemandCap": { "val": 0 },
-    "billingPeriodStart": "2026-05-01T00:00:00+00:00",
-    "billingPeriodEnd": "2026-06-01T00:00:00+00:00",
-    "history": [
-      {
-        "billingCycle": { "year": 2026, "month": 4 },
-        "includedUsed": { "val": 0 },
-        "onDemandUsed": { "val": 0 },
-        "totalUsed": { "val": 0 }
-      }
-    ]
+    "creditUsagePercent": 99.0,
+    "currentPeriod": {
+      "type": "USAGE_PERIOD_TYPE_WEEKLY",
+      "start": "2026-07-03T04:01:09.238389+00:00",
+      "end": "2026-07-10T04:01:09.238389+00:00"
+    },
+    "onDemandCap": { "val": 2500 },
+    "isUnifiedBillingUser": true
   }
 }
 ```
+
+Used fields:
+
+- `creditUsagePercent`: weekly pool usage, 0 to 100
+- `currentPeriod.type`: the Weekly line is shown only for `USAGE_PERIOD_TYPE_WEEKLY`
+- `currentPeriod.start` and `currentPeriod.end`: the period length and reset time
+- `onDemandCap.val`: pay-as-you-go cap; `0` or absent means disabled
+
+A team principal gets `412` with an `error` containing "no personal team". That is not treated as a failure: the card shows a "Team account" status instead.
 
 ### GET /settings
 
 Returns remote CLI settings. OpenUsage reads `subscription_tier_display` from this response and shows it as the provider plan label, for example `SuperGrok Heavy`.
 
-Used fields:
-
-- `used.val` — current billing period usage
-- `monthlyLimit.val` — included credit limit
-- `onDemandCap.val` — pay-as-you-go cap; `0` means disabled
-- `billingPeriodEnd` — current billing period reset time
-
 ## Displayed Lines
 
 | Line | Description |
 |------|-------------|
-| Credits used | Percent of included monthly credits used |
+| Weekly limit | Percent of the shared weekly credit pool used |
 | Pay as you go | Disabled, or the configured pay-as-you-go cap |
+| Status / Note | Shown instead of the above for team accounts (no personal quota) |
 
 ## Errors
 

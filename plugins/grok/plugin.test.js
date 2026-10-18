@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest"
 import { makeCtx } from "../test-helpers.js"
 
 const AUTH_PATH = "~/.grok/auth.json"
-const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing"
+const BILLING_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits"
 const SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings"
 const REFRESH_URL = "https://auth.x.ai/oauth2/token"
 
@@ -22,26 +22,16 @@ function writeAuth(ctx, entry) {
 }
 
 function billingData(overrides) {
+  // Shape of GET /v1/billing?format=credits (proto-JSON: zero-valued fields are omitted).
   const config = Object.assign({
-    monthlyLimit: { val: 60000 },
-    used: { val: 4277 },
+    creditUsagePercent: 42.5,
+    currentPeriod: {
+      type: "USAGE_PERIOD_TYPE_WEEKLY",
+      start: "2026-01-29T04:01:09.238389+00:00",
+      end: "2026-02-05T04:01:09.238389+00:00",
+    },
     onDemandCap: { val: 0 },
-    billingPeriodStart: "2026-05-01T00:00:00+00:00",
-    billingPeriodEnd: "2026-06-01T00:00:00+00:00",
-    history: [
-      {
-        billingCycle: { year: 2026, month: 4 },
-        includedUsed: { val: 1234 },
-        onDemandUsed: { val: 200 },
-        totalUsed: { val: 1434 },
-      },
-      {
-        billingCycle: { year: 2026, month: 3 },
-        includedUsed: { val: 0 },
-        onDemandUsed: { val: 0 },
-        totalUsed: { val: 0 },
-      },
-    ],
+    isUnifiedBillingUser: true,
   }, overrides || {})
   return { config }
 }
@@ -272,20 +262,79 @@ describe("grok plugin", () => {
     expect(call.headers.Accept).toBe("application/json")
   })
 
-  it("renders credits used as percent progress", async () => {
+  it("renders the weekly pool as percent progress", async () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx)
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
-    const line = result.lines.find((l) => l.label === "Credits used")
+    const line = result.lines.find((l) => l.label === "Weekly limit")
 
     expect(line.type).toBe("progress")
-    expect(line.used).toBeCloseTo(7.128, 3)
+    expect(line.used).toBe(42.5)
     expect(line.limit).toBe(100)
     expect(line.format).toEqual({ kind: "percent" })
-    expect(line.resetsAt).toBe("2026-06-01T00:00:00.000Z")
+    expect(line.resetsAt).toBe("2026-02-05T04:01:09.238Z")
+    expect(line.periodDurationMs).toBe(7 * 24 * 60 * 60 * 1000)
+    expect(result.lines.find((l) => l.label === "Credits used")).toBeUndefined()
+  })
+
+  it("treats an omitted creditUsagePercent as 0%", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    const data = billingData()
+    delete data.config.creditUsagePercent
+    mockGrokApi(ctx, data)
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((l) => l.label === "Weekly limit").used).toBe(0)
+  })
+
+  it("omits the weekly line when the period is not weekly", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({
+      currentPeriod: {
+        type: "USAGE_PERIOD_TYPE_MONTHLY",
+        start: "2026-02-01T00:00:00+00:00",
+        end: "2026-03-01T00:00:00+00:00",
+      },
+    }))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.lines.find((l) => l.label === "Weekly limit")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Pay as you go")).toBeTruthy()
+  })
+
+  it("shows a team-account note instead of failing on the no-personal-team 412", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx)
+    const base = ctx.host.http.request.getMockImplementation()
+    ctx.host.http.request.mockImplementation((req) => req.url === BILLING_URL
+      ? { status: 412, bodyText: JSON.stringify({ error: "Principal has no personal team" }) }
+      : base(req))
+
+    const plugin = await loadPlugin()
+    const result = plugin.probe(ctx)
+
+    expect(result.plan).toBe("SuperGrok Heavy")
+    expect(result.lines.find((l) => l.label === "Status").text).toBe("Team account")
+    expect(result.lines.find((l) => l.label === "Weekly limit")).toBeUndefined()
+  })
+
+  it("still fails on other 412 responses", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    ctx.host.http.request.mockReturnValue({ status: 412, bodyText: JSON.stringify({ error: "other" }) })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Grok billing request failed (HTTP 412). Try again later.")
   })
 
   it("does not render duplicate reset or billing detail rows", async () => {
@@ -332,16 +381,15 @@ describe("grok plugin", () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx, billingData({
-      monthlyLimit: { val: "10000" },
-      used: { val: "2500" },
+      creditUsagePercent: "25",
       onDemandCap: { val: "0" },
     }))
 
     const plugin = await loadPlugin()
     const result = plugin.probe(ctx)
 
-    expect(result.lines.find((l) => l.label === "Credits used").used).toBe(25)
-    expect(result.lines.find((l) => l.label === "Current period")).toBeUndefined()
+    expect(result.lines.find((l) => l.label === "Weekly limit").used).toBe(25)
+    expect(result.lines.find((l) => l.label === "Pay as you go").text).toBe("Disabled")
   })
 
   it("reads the plan name from settings instead of auth email", async () => {
@@ -417,6 +465,15 @@ describe("grok plugin", () => {
     const ctx = makeCtx()
     writeAuth(ctx)
     mockGrokApi(ctx, { config: { used: { val: 1 } } })
+
+    const plugin = await loadPlugin()
+    expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
+  })
+
+  it("throws when creditUsagePercent is present but not numeric", async () => {
+    const ctx = makeCtx()
+    writeAuth(ctx)
+    mockGrokApi(ctx, billingData({ creditUsagePercent: "lots" }))
 
     const plugin = await loadPlugin()
     expect(() => plugin.probe(ctx)).toThrow("Grok billing response changed.")
